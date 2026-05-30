@@ -107,6 +107,15 @@ def webhook():
     return jsonify({"status": "ok"}), 200
 
 
+@app.route("/debug/env", methods=["GET"])
+def debug_env():
+    return jsonify({
+        "LINE_CHANNEL_SECRET_set": bool(os.environ.get("LINE_CHANNEL_SECRET")),
+        "LINE_CHANNEL_ACCESS_TOKEN_set": bool(os.environ.get("LINE_CHANNEL_ACCESS_TOKEN")),
+        "LINE_CHANNEL_ACCESS_TOKEN_preview": os.environ.get("LINE_CHANNEL_ACCESS_TOKEN", "")[:15] + "..." if os.environ.get("LINE_CHANNEL_ACCESS_TOKEN") else "EMPTY"
+    }), 200
+
+
 @app.route("/debug/profile/<user_id>", methods=["GET"])
 def debug_profile(user_id):
     token = CHANNEL_ACCESS_TOKEN
