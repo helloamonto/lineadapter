@@ -107,6 +107,17 @@ def webhook():
     return jsonify({"status": "ok"}), 200
 
 
+@app.route("/debug/profile/<user_id>", methods=["GET"])
+def debug_profile(user_id):
+    token = CHANNEL_ACCESS_TOKEN
+    profile = get_user_profile(user_id)
+    return jsonify({
+        "token_set": bool(token),
+        "token_preview": token[:10] + "..." if token else "EMPTY",
+        "profile_result": profile
+    }), 200
+
+
 @app.route("/messages", methods=["GET"])
 def get_messages():
     event_type = request.args.get("type")        # filter by event type
