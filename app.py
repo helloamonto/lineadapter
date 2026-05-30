@@ -12,6 +12,9 @@ app = Flask(__name__)
 # --- Config ---
 CHANNEL_SECRET = os.environ.get("LINE_CHANNEL_SECRET", "your_channel_secret_here")
 
+# --- In-memory message store (resets on restart) ---
+messages = []
+
 # --- Logging setup ---
 logging.basicConfig(
     level=logging.INFO,
@@ -30,33 +33,39 @@ def verify_signature(body: bytes, signature: str) -> bool:
 def log_event(event: dict):
     event_type = event.get("type", "unknown")
     timestamp = datetime.utcnow().isoformat()
+    source = event.get("source", {})
+    user_id = source.get("userId", "unknown")
+
+    record = {
+        "timestamp": timestamp,
+        "event_type": event_type,
+        "user_id": user_id,
+    }
 
     if event_type == "message":
         msg = event.get("message", {})
         msg_type = msg.get("type")
-        source = event.get("source", {})
-        user_id = source.get("userId", "unknown")
-
-        if msg_type == "text":
-            logger.info(f"[{timestamp}] TEXT from {user_id}: {msg.get('text')}")
-        else:
-            logger.info(f"[{timestamp}] {msg_type.upper()} message from {user_id}")
+        record["message_type"] = msg_type
+        record["text"] = msg.get("text") if msg_type == "text" else None
+        logger.info(f"[{timestamp}] TEXT from {user_id}: {msg.get('text')}" if msg_type == "text" else f"[{timestamp}] {msg_type.upper()} from {user_id}")
 
     elif event_type == "follow":
-        user_id = event.get("source", {}).get("userId", "unknown")
         logger.info(f"[{timestamp}] NEW FOLLOWER: {user_id}")
 
     elif event_type == "unfollow":
-        user_id = event.get("source", {}).get("userId", "unknown")
         logger.info(f"[{timestamp}] UNFOLLOWED by: {user_id}")
 
     elif event_type == "postback":
         data = event.get("postback", {}).get("data", "")
-        user_id = event.get("source", {}).get("userId", "unknown")
+        record["postback_data"] = data
         logger.info(f"[{timestamp}] POSTBACK from {user_id}: {data}")
 
     else:
         logger.info(f"[{timestamp}] EVENT [{event_type}]: {json.dumps(event)}")
+
+    messages.append(record)
+    if len(messages) > 500:  # keep last 500 messages
+        messages.pop(0)
 
 
 # --- Routes ---
@@ -79,6 +88,24 @@ def webhook():
         logger.error(f"Error processing events: {e}")
 
     return jsonify({"status": "ok"}), 200
+
+
+@app.route("/messages", methods=["GET"])
+def get_messages():
+    event_type = request.args.get("type")        # filter by event type
+    user_id = request.args.get("user_id")        # filter by user
+    limit = int(request.args.get("limit", 50))   # default last 50
+
+    result = messages
+    if event_type:
+        result = [m for m in result if m["event_type"] == event_type]
+    if user_id:
+        result = [m for m in result if m["user_id"] == user_id]
+
+    return jsonify({
+        "total": len(result),
+        "messages": result[-limit:]
+    }), 200
 
 
 @app.route("/privacy", methods=["GET"])
