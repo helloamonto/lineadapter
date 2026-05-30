@@ -4,6 +4,7 @@ import hmac
 import hashlib
 import base64
 import logging
+import urllib.request
 from datetime import datetime
 from flask import Flask, request, jsonify
 
@@ -11,9 +12,22 @@ app = Flask(__name__)
 
 # --- Config ---
 CHANNEL_SECRET = os.environ.get("LINE_CHANNEL_SECRET", "your_channel_secret_here")
+CHANNEL_ACCESS_TOKEN = os.environ.get("LINE_CHANNEL_ACCESS_TOKEN", "")
 
 # --- In-memory message store (resets on restart) ---
 messages = []
+
+
+def get_user_profile(user_id: str) -> dict:
+    """Fetch display name and picture from LINE Profile API."""
+    try:
+        url = f"https://api.line.me/v2/bot/profile/{user_id}"
+        req = urllib.request.Request(url, headers={"Authorization": f"Bearer {CHANNEL_ACCESS_TOKEN}"})
+        with urllib.request.urlopen(req) as res:
+            return json.loads(res.read().decode("utf-8"))
+    except Exception as e:
+        logger.warning(f"Could not fetch profile for {user_id}: {e}")
+        return {}
 
 # --- Logging setup ---
 logging.basicConfig(
@@ -36,10 +50,13 @@ def log_event(event: dict):
     source = event.get("source", {})
     user_id = source.get("userId", "unknown")
 
+    profile = get_user_profile(user_id)
     record = {
         "timestamp": timestamp,
         "event_type": event_type,
         "user_id": user_id,
+        "display_name": profile.get("displayName", "unknown"),
+        "picture_url": profile.get("pictureUrl", ""),
     }
 
     if event_type == "message":
